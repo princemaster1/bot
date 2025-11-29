@@ -1,0 +1,9 @@
+version: "3.8"
+services:
+  bot:
+    build: .
+    container_name: whatsapp_bot
+    restart: always
+    environment:
+      - SESSION_ID=${SESSION_ID}
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
