@@ -6,66 +6,47 @@ import JSZip from 'jszip';
 
 const README_CONTENT = `# 📦 WhatsApp Bot (Baileys + Gemini AI)
 
-A simple, modular WhatsApp bot built with Node.js and Baileys. 
-Designed for **Termux** session generation and **Koyeb** deployment.
+## ⚠️ IMPORTANT
+**DO NOT** copy the website code (RepoUI.tsx). Only use the files provided in this repository structure.
 
-## ✨ Features
-- **Auto Status Viewer**: Automatically marks statuses as read.
-- **Gemini AI Chat**: Tag the bot or use \`,ai\` to chat.
-- **Always Online**: Keeps presence available.
-- **Session Login**: Supports QR Code & Pairing Code.
-- **Dockerized**: Ready for Koyeb.
+## 📱 Termux Setup (Generate Session)
 
----
-
-## 📱 Step 1: Generate Session (Termux)
-
-You need to generate a unique **SESSION_ID** to login.
-
-1. Install Termux from Play Store or F-Droid.
-2. Open Termux and type:
-
+1. **Install Dependencies**
 \`\`\`bash
 pkg update && pkg upgrade -y
 pkg install git nodejs -y
+\`\`\`
+
+2. **Clone & Install**
+\`\`\`bash
 git clone https://github.com/username/my-whatsapp-bot
 cd my-whatsapp-bot
 npm install
+\`\`\`
+
+3. **Run Bot**
+\`\`\`bash
 node server.js
 \`\`\`
 
-3. **Scan the QR Code** displayed in the terminal.
-4. Wait for the bot to send a message to your **Saved Messages**.
-5. Copy the long text string (that is your \`SESSION_ID\`).
+4. **Scan QR**: Open WhatsApp > Linked Devices > Link a Device.
+5. **Copy Session**: The bot will generate a file \`session/creds.json\`. It will also print a base64 string if running in "First Run" mode.
 
 ---
 
-## 🚀 Step 2: Deploy to Koyeb
+## 🚀 Deploy to Koyeb
 
-1. **Fork** this repository.
-2. Create a new App on [Koyeb](https://koyeb.com).
-3. Select **GitHub** as the source and choose your forked repo.
-4. Go to **Settings** -> **Environment Variables** and add:
-
-| Key | Value |
-|-----|-------|
-| \`SESSION_ID\` | (Paste the code you copied from Termux) |
-| \`GEMINI_API_KEY\` | (Your API Key from Google AI Studio) |
-| \`DATABASE_URL\` | (Optional: MongoDB Connection URL) |
-
-5. Click **Deploy**.
-6. Wait 2 minutes. The bot will message you: *"Successfully deployed!"*
-
----
-
-## 🛠️ Commands
-
-- \`,menu\` : Show command list
-- \`,ai <text>\` : Chat with Gemini
-- \`,ping\` : Check bot speed
+1. **Fork this Repo** to GitHub.
+2. **New Service** on Koyeb.
+3. **Environment Variables**:
+   - \`SESSION_ID\`: (The base64 string from Termux, or upload the creds.json content)
+   - \`GEMINI_API_KEY\`: (From Google AI Studio)
 `;
 
-const SERVER_JS_CONTENT = `import makeWASocket, { useMultiFileAuthState, DisconnectReason, Browsers } from '@whiskeysockets/baileys';
+const SERVER_JS_CONTENT = `// 🤖 WHATSAPP BOT SERVER CODE
+// Run this file using: node server.js
+
+import makeWASocketImport, { useMultiFileAuthState, DisconnectReason, Browsers } from '@whiskeysockets/baileys';
 import { GoogleGenAI } from '@google/genai';
 import fs from 'fs';
 import dotenv from 'dotenv';
@@ -79,6 +60,9 @@ import menu from './features/menu.js';
 
 dotenv.config();
 
+// FIX: Handle default export compatibility
+const makeWASocket = makeWASocketImport.default || makeWASocketImport;
+
 const SESSION_DIR = './session';
 const SESSION_ID = process.env.SESSION_ID;
 
@@ -89,9 +73,10 @@ if (SESSION_ID && !fs.existsSync(SESSION_DIR + '/creds.json')) {
 }
 
 async function start() {
+    console.log('Starting Bot...');
     const { state, saveCreds } = await useMultiFileAuthState(SESSION_DIR);
 
-    const sock = makeWASocket.default({
+    const sock = makeWASocket({
         auth: state,
         printQRInTerminal: !SESSION_ID, // Only print QR if no session ID provided
         logger: pino({ level: 'silent' }),
@@ -106,21 +91,27 @@ async function start() {
 
         if (connection === 'close') {
             const shouldReconnect = lastDisconnect.error?.output?.statusCode !== DisconnectReason.loggedOut;
+            console.log('Connection closed. Reconnecting:', shouldReconnect);
             if (shouldReconnect) start();
         } 
         else if (connection === 'open') {
-            console.log('Bot Connected');
+            console.log('✅ Bot Connected');
             
             const botNumber = sock.user.id.split(':')[0] + '@s.whatsapp.net';
 
             // 1. If running locally (Generating Session)
             if (!SESSION_ID) {
-                const sessionData = fs.readFileSync(SESSION_DIR + '/creds.json');
-                const b64Session = Buffer.from(sessionData).toString('base64');
-                
-                await sock.sendMessage(botNumber, { 
-                    text: \`*SESSION ID GENERATED* 🔑\\n\\nCopy the code below for deployment:\\n\\n\${b64Session}\` 
-                });
+                try {
+                    const sessionData = fs.readFileSync(SESSION_DIR + '/creds.json');
+                    const b64Session = Buffer.from(sessionData).toString('base64');
+                    console.log('\\n👉 YOUR SESSION ID (COPY THIS):\\n' + b64Session + '\\n');
+                    
+                    await sock.sendMessage(botNumber, { 
+                        text: \`*SESSION ID GENERATED* 🔑\\n\\nCopy for Koyeb:\\n\\n\${b64Session}\` 
+                    });
+                } catch (err) {
+                    console.error('Could not read session file for ID generation.');
+                }
             } 
             // 2. If running in production (Koyeb)
             else {
@@ -286,7 +277,8 @@ const REPO_STRUCTURE: FileNode[] = [
 
 export const RepoUI: React.FC = () => {
   const [fileSystem, setFileSystem] = useState<FileNode[]>(REPO_STRUCTURE);
-  const [activeFile, setActiveFile] = useState<FileNode>(REPO_STRUCTURE[2]); // Default README
+  // DEFAULT TO SERVER.JS SO USER SEES THE BOT CODE FIRST
+  const [activeFile, setActiveFile] = useState<FileNode>(REPO_STRUCTURE[REPO_STRUCTURE.length - 1]); 
   const [copied, setCopied] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
 
@@ -385,7 +377,7 @@ export const RepoUI: React.FC = () => {
            <Box className="w-5 h-5 text-slate-400" />
            <span className="text-blue-400 font-medium">whatsapp-bot</span>
            <span className="text-slate-500">/</span>
-           <span className="font-bold text-white">whatsapp-geminijjjjjjj-bot</span>
+           <span className="font-bold text-white">whatsapp-gemini-bot</span>
            <span className="ml-2 px-2 py-0.5 rounded-full border border-slate-700 text-xs text-slate-500">Public</span>
         </div>
         <div className="flex gap-2">
@@ -421,7 +413,7 @@ export const RepoUI: React.FC = () => {
                     className="flex items-center gap-2 px-2 py-1 hover:bg-[#1f2428] rounded text-xs text-slate-300 transition-colors"
                 >
                     {copied ? <Check className="w-3 h-3 text-green-400" /> : <Copy className="w-3 h-3" />}
-                    {copied ? 'Copied' : 'Copy raw file'}
+                    {copied ? 'Copied' : 'Copy Content'}
                 </button>
             </div>
 
