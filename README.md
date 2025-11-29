@@ -22,8 +22,8 @@ You need to generate a unique **SESSION_ID** to login.
 ```bash
 pkg update && pkg upgrade -y
 pkg install git nodejs -y
-git clone https://github.com/username/my-whatsapp-bot
-cd my-whatsapp-bot
+git clone https://github.com/princemaster1/bot
+cd bot
 npm install
 node server.js
 ```
